@@ -22,64 +22,71 @@ THE SOFTWARE.
 package cmd
 
 import (
-	"fmt"
-	"os"
-
+	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector/k8s-configmap-collector"
+	"github.com/luqmanMohammed/k8s-events-runner/utils"
 	"github.com/spf13/cobra"
 
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+type Config struct {
+	Port           int
+	LogLevel       string
+	LogFormat      string
+	Host           string
+	IsLocal        bool
+	KubeConfigPath string
 
-// rootCmd represents the base command when called without any subcommands
+	Namespace              string
+	RunnerConfigMapLabel   string
+	EventMapConfigMapLabel string
+}
+
+var (
+	defaults = map[string]interface{}{
+		"port":                 8080,
+		"host":                 "0.0.0.0",
+		"logLevel":             "debug",
+		"logFormat":            "text",
+		"isLocal":              true,
+		"kubeConfigPath":       "",
+		"namespace":            "er",
+		"runnerConfigMapLabel": "er=runner",
+	}
+)
+
 var rootCmd = &cobra.Command{
 	Use:   "k8s-events-runner",
 	Short: "Listens on events/requests and creates pods",
 	Long:  `An automation tool which runs kubernets pods with configured inputs on configured events/requests`,
-	// Run: func(cmd *cobra.Command, args []string) { },
+	Run: func(cmd *cobra.Command, args []string) {
+		var config Config
+		viper.Unmarshal(&config)
+		kubeclientset, err := utils.GetKubeClientSet(config.IsLocal, config.KubeConfigPath)
+		if err != nil {
+			panic(err)
+		}
+		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapLabel)
+		k8scmc.Collect()
+	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
 	cobra.CheckErr(rootCmd.Execute())
 }
 
 func init() {
-	cobra.OnInitialize(initConfig)
-
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.k8s-events-runner.yaml)")
-
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-}
-
-// initConfig reads in config file and ENV variables if set.
-func initConfig() {
-	if cfgFile != "" {
-		// Use config file from the flag.
-		viper.SetConfigFile(cfgFile)
-	} else {
-		// Find home directory.
-		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-
-		// Search config in home directory with name ".k8s-events-runner" (without extension).
-		viper.AddConfigPath(home)
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".k8s-events-runner")
+	for k, v := range defaults {
+		viper.SetDefault(k, v)
 	}
-
-	viper.AutomaticEnv() // read in environment variables that match
-
-	// If a config file is found, read it in.
-	if err := viper.ReadInConfig(); err == nil {
-		fmt.Fprintln(os.Stderr, "Using config file:", viper.ConfigFileUsed())
-	}
+	viper.SetEnvPrefix("ER")
+	viper.AutomaticEnv()
+	rootCmd.Flags().IntP("port", "p", defaults["port"].(int), "Port to listen on")
+	rootCmd.Flags().String("host", viper.GetString("host"), "Host to listen on")
+	rootCmd.Flags().StringP("logLevel", "l", viper.GetString("logLevel"), "Log level")
+	rootCmd.Flags().StringP("logFormat", "f", viper.GetString("logFormat"), "Log format")
+	rootCmd.Flags().StringP("runnerEventMapConfigLabel", "e", viper.GetString("runnerEventMapConfigLabel"), "Label of runner event map config")
+	rootCmd.Flags().BoolP("isLocal", "i", viper.GetBool("isLocal"), "Is local")
+	rootCmd.Flags().StringP("kubeConfigPath", "k", viper.GetString("kubeConfigPath"), "Path to kube config")
+	viper.BindPFlags(rootCmd.Flags())
 }
