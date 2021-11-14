@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 )
 
+//getKubeAPIConfig gets config based in-cluster or out-cluster
 func getKubeAPIConfig(isLocal bool, kubeConfigPath string) (*rest.Config, error) {
 	if isLocal {
 		klog.V(3).Info("Client detected to be running in local")
@@ -24,6 +25,7 @@ func getKubeAPIConfig(isLocal bool, kubeConfigPath string) (*rest.Config, error)
 	}
 }
 
+//GetKubeClientSet creates and returns ClientSet getting config dynamically
 func GetKubeClientSet(isLocal bool, kubeConfigPath string) (*kubernetes.Clientset, error) {
 	config, err := getKubeAPIConfig(isLocal, kubeConfigPath)
 	if err != nil {

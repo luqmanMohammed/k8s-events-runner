@@ -8,8 +8,9 @@ type RunnerConfig v1.Pod
 //EventMapRunnerAssociation contains which runner
 //should be used on event with aditional info
 type EventMapRunnerAssociation struct {
-	Runner      string `yaml:"runner"`
-	Concurrency int    `yaml:"concurrency"`
+	Runner           string `yaml:"runner"`
+	ConcurrencyLimit int    `yaml:"concurrencyLimit" default:"1"`
+	Retries          int    `yaml:"retries" default:"1"`
 }
 
 //EventMapEventTypeAssociation associates Event type with specific runner association

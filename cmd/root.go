@@ -24,6 +24,7 @@ package cmd
 import (
 	"flag"
 
+	"github.com/luqmanMohammed/k8s-events-runner/api"
 	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector/k8s-configmap-collector"
 	"github.com/luqmanMohammed/k8s-events-runner/utils"
 	"github.com/spf13/cobra"
@@ -37,8 +38,11 @@ type Config struct {
 	//General
 	LogVerbosity string
 	//ER server related configs
-	Port int
-	Host string
+	Port           int
+	Host           string
+	CACertPath     string
+	ServerCertPath string
+	ServerKeyPath  string
 	//Kubernetes related configs
 	IsLocal               bool
 	KubeConfigPath        string
@@ -50,7 +54,7 @@ type Config struct {
 var (
 	defaults = map[string]interface{}{
 		"port":                  8080,
-		"host":                  "0.0.0.0",
+		"host":                  "",
 		"logVerbosity":          "3",
 		"isLocal":               true,
 		"kubeConfigPath":        "",
@@ -78,6 +82,8 @@ var rootCmd = &cobra.Command{
 		}
 		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapName)
 		k8scmc.Collect()
+		erServer := api.New(config.Host, config.Port, config.CACertPath, config.ServerKeyPath, config.ServerCertPath)
+		erServer.ListenNoTLS()
 	},
 }
 

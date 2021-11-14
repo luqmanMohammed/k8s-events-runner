@@ -1,6 +1,14 @@
 package executor
 
-import "k8s.io/client-go/kubernetes"
+import (
+	configcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector"
+	"k8s.io/client-go/kubernetes"
+)
+
+type Job struct {
+	configcollector.RunnerEventAssociation
+	RetryCount int
+}
 
 type Executor interface {
 }
