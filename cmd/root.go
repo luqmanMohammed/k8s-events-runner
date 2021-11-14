@@ -37,21 +37,22 @@ type Config struct {
 	IsLocal        bool
 	KubeConfigPath string
 
-	Namespace              string
-	RunnerConfigMapLabel   string
-	EventMapConfigMapLabel string
+	Namespace             string
+	RunnerConfigMapLabel  string
+	EventMapConfigMapName string
 }
 
 var (
 	defaults = map[string]interface{}{
-		"port":                 8080,
-		"host":                 "0.0.0.0",
-		"logLevel":             "debug",
-		"logFormat":            "text",
-		"isLocal":              true,
-		"kubeConfigPath":       "",
-		"namespace":            "er",
-		"runnerConfigMapLabel": "er=runner",
+		"port":                  8080,
+		"host":                  "0.0.0.0",
+		"logLevel":              "debug",
+		"logFormat":             "text",
+		"isLocal":               true,
+		"kubeConfigPath":        "",
+		"namespace":             "er",
+		"runnerConfigMapLabel":  "er=runner",
+		"eventMapConfigMapName": "er-eventmap",
 	}
 )
 
@@ -66,7 +67,7 @@ var rootCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapLabel)
+		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapName)
 		k8scmc.Collect()
 	},
 }
