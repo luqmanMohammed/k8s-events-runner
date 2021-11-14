@@ -22,21 +22,26 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"flag"
+
 	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector/k8s-configmap-collector"
 	"github.com/luqmanMohammed/k8s-events-runner/utils"
 	"github.com/spf13/cobra"
+	"k8s.io/klog/v2"
 
 	"github.com/spf13/viper"
 )
 
+//Config struct used to unmarshall all events-runner related configs
 type Config struct {
-	Port           int
-	LogLevel       string
-	LogFormat      string
-	Host           string
-	IsLocal        bool
-	KubeConfigPath string
-
+	//General
+	LogVerbosity string
+	//ER server related configs
+	Port int
+	Host string
+	//Kubernetes related configs
+	IsLocal               bool
+	KubeConfigPath        string
 	Namespace             string
 	RunnerConfigMapLabel  string
 	EventMapConfigMapName string
@@ -46,8 +51,7 @@ var (
 	defaults = map[string]interface{}{
 		"port":                  8080,
 		"host":                  "0.0.0.0",
-		"logLevel":              "debug",
-		"logFormat":             "text",
+		"logVerbosity":          "3",
 		"isLocal":               true,
 		"kubeConfigPath":        "",
 		"namespace":             "er",
@@ -59,19 +63,25 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "k8s-events-runner",
 	Short: "Listens on events/requests and creates pods",
-	Long:  `An automation tool which runs kubernets pods with configured inputs on configured events/requests`,
+	Long:  `An automation tool which runs kubernets pods with configured inputs for configured events/requests`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var config Config
 		viper.Unmarshal(&config)
+		klog.InitFlags(nil)
+		defer klog.Flush()
+		flag.Set("v", config.LogVerbosity)
+		klog.Info("Starting Events Runner")
+		klog.V(1).Info("Initializing Kube Connection")
 		kubeclientset, err := utils.GetKubeClientSet(config.IsLocal, config.KubeConfigPath)
 		if err != nil {
-			panic(err)
+			klog.Fatalf("Error Initializing Kube Connection: %v", err)
 		}
 		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapName)
 		k8scmc.Collect()
 	},
 }
 
+//Execute triggers the root cmd
 func Execute() {
 	cobra.CheckErr(rootCmd.Execute())
 }
@@ -82,12 +92,5 @@ func init() {
 	}
 	viper.SetEnvPrefix("ER")
 	viper.AutomaticEnv()
-	rootCmd.Flags().IntP("port", "p", defaults["port"].(int), "Port to listen on")
-	rootCmd.Flags().String("host", viper.GetString("host"), "Host to listen on")
-	rootCmd.Flags().StringP("logLevel", "l", viper.GetString("logLevel"), "Log level")
-	rootCmd.Flags().StringP("logFormat", "f", viper.GetString("logFormat"), "Log format")
-	rootCmd.Flags().StringP("runnerEventMapConfigLabel", "e", viper.GetString("runnerEventMapConfigLabel"), "Label of runner event map config")
-	rootCmd.Flags().BoolP("isLocal", "i", viper.GetBool("isLocal"), "Is local")
-	rootCmd.Flags().StringP("kubeConfigPath", "k", viper.GetString("kubeConfigPath"), "Path to kube config")
 	viper.BindPFlags(rootCmd.Flags())
 }
