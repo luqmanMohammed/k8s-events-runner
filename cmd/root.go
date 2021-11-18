@@ -38,8 +38,7 @@ type Config struct {
 	//General
 	LogVerbosity string
 	//ER server related configs
-	Port           int
-	Host           string
+	Addr           string
 	CACertPath     string
 	ServerCertPath string
 	ServerKeyPath  string
@@ -53,14 +52,16 @@ type Config struct {
 
 var (
 	defaults = map[string]interface{}{
-		"port":                  8080,
-		"host":                  "",
+		"addr":                  ":8080",
 		"logVerbosity":          "3",
 		"isLocal":               true,
 		"kubeConfigPath":        "",
 		"namespace":             "er",
 		"runnerConfigMapLabel":  "er=runner",
 		"eventMapConfigMapName": "er-eventmap",
+		"caCertPath":            "./test_certs/ca/ca.crt",
+		"serverCertPath":        "./test_certs/server/server.crt",
+		"serverKeyPath":         "./test_certs/server/server.key",
 	}
 )
 
@@ -81,9 +82,11 @@ var rootCmd = &cobra.Command{
 			klog.Fatalf("Error Initializing Kube Connection: %v", err)
 		}
 		k8scmc := k8sconfigmapcollector.New(kubeclientset, config.Namespace, config.RunnerConfigMapLabel, config.EventMapConfigMapName)
-		k8scmc.Collect()
-		erServer := api.New(config.Host, config.Port, config.CACertPath, config.ServerKeyPath, config.ServerCertPath)
-		erServer.ListenNoTLS()
+		if err = k8scmc.Collect(); err != nil {
+			klog.Fatalf("Error collecting configmaps: %v", err)
+		}
+		erServer := api.New(config.Addr)
+		erServer.ListenMTLS(config.CACertPath, config.ServerKeyPath, config.ServerCertPath)
 	},
 }
 
