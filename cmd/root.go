@@ -22,6 +22,7 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"context"
 	"flag"
 	"time"
 
@@ -99,7 +100,7 @@ var rootCmd = &cobra.Command{
 		exec := executor.New(kubeclientset, config.Namespace, config.ExecutorPodIdentifier, jq)
 
 		go func() {
-			exec.StartExecutors()
+			exec.StartExecutors(context.Background())
 		}()
 
 		erServer := api.New(config.Addr, &jq, k8scmc)

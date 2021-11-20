@@ -7,4 +7,6 @@ type Job struct {
 	RetryCount int
 	EventType  string
 	Resource   string
+	Status     string
+	PodName    string
 }
