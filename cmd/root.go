@@ -23,8 +23,11 @@ package cmd
 
 import (
 	"flag"
+	"time"
 
 	"github.com/luqmanMohammed/k8s-events-runner/api"
+	"github.com/luqmanMohammed/k8s-events-runner/executor"
+	"github.com/luqmanMohammed/k8s-events-runner/queue"
 	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector/k8s-configmap-collector"
 	"github.com/luqmanMohammed/k8s-events-runner/utils"
 	"github.com/spf13/cobra"
@@ -42,12 +45,16 @@ type Config struct {
 	CACertPath     string
 	ServerCertPath string
 	ServerKeyPath  string
-	//Kubernetes related configs
-	IsLocal               bool
-	KubeConfigPath        string
-	Namespace             string
+	//Kubernetes general configs
+	IsLocal        bool
+	KubeConfigPath string
+	Namespace      string
+	//Kubernetes configmap collector related configs
 	RunnerConfigMapLabel  string
 	EventMapConfigMapName string
+	//Kubernetes event executor related configs
+	ExecutorPodIdentifier string
+	ConcurrencyTimeout    time.Duration
 }
 
 var (
@@ -59,9 +66,11 @@ var (
 		"namespace":             "er",
 		"runnerConfigMapLabel":  "er=runner",
 		"eventMapConfigMapName": "er-eventmap",
-		"caCertPath":            "./test_certs/ca/ca.crt",
-		"serverCertPath":        "./test_certs/server/server.crt",
-		"serverKeyPath":         "./test_certs/server/server.key",
+		"caCertPath":            "./test_pki/ca/ca.crt",
+		"serverCertPath":        "./test_pki/server/server.crt",
+		"serverKeyPath":         "./test_pki/server/server.key",
+		"ExecutorPodIdentifier": "er",
+		"ConcurrencyTimeout":    time.Minute * 5,
 	}
 )
 
@@ -85,8 +94,18 @@ var rootCmd = &cobra.Command{
 		if err = k8scmc.Collect(); err != nil {
 			klog.Fatalf("Error collecting configmaps: %v", err)
 		}
-		erServer := api.New(config.Addr)
-		erServer.ListenMTLS(config.CACertPath, config.ServerKeyPath, config.ServerCertPath)
+		klog.V(1).Info("Starting Events Runner Server")
+		jq := queue.NewJobQueue(50)
+		exec := executor.New(kubeclientset, config.Namespace, config.ExecutorPodIdentifier, jq)
+
+		go func() {
+			exec.StartExecutors()
+		}()
+
+		erServer := api.New(config.Addr, &jq, k8scmc)
+		if err = erServer.ListenMTLS(config.CACertPath, config.ServerKeyPath, config.ServerCertPath); err != nil {
+			klog.Fatalf("Error starting server: %v", err)
+		}
 	},
 }
 

@@ -94,11 +94,11 @@ func (cmc *K8sConfigMapCollector) Collect() error {
 }
 
 //GetRunnerEventAssocForResourceAndEvent is a getter which retrieves a runner configuration provided the reosurce and event
-func (cmc K8sConfigMapCollector) GetRunnerEventAssocForResourceAndEvent(resource, event string) (*configcollector.RunnerEventAssociation, error) {
+func (cmc K8sConfigMapCollector) GetRunnerEventAssocForResourceAndEvent(resource, event string) (configcollector.RunnerEventAssociation, error) {
 	if resourceAssoc, found := cmc.eventMap[resource]; found {
 		if eventTypeAssoc, found := resourceAssoc[event]; found {
 			if runnerConfig, found := cmc.runnerConfigs[eventTypeAssoc.Runner]; found {
-				return &configcollector.RunnerEventAssociation{
+				return configcollector.RunnerEventAssociation{
 					EventMapRunnerAssociation: eventTypeAssoc,
 					RunnerConfig:              runnerConfig,
 				}, nil
@@ -106,5 +106,5 @@ func (cmc K8sConfigMapCollector) GetRunnerEventAssocForResourceAndEvent(resource
 		}
 	}
 	klog.V(1).ErrorS(configcollector.ErrRunnerNotFound, "NOT FOUND", resource, event)
-	return nil, configcollector.ErrRunnerNotFound
+	return configcollector.RunnerEventAssociation{}, configcollector.ErrRunnerNotFound
 }

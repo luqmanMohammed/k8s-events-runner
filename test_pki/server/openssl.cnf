@@ -1,0 +1,17 @@
+[ req ]
+req_extention = v3_req
+distinguished_name = req_distinguished_name
+prompt = no
+[req_distinguished_name]
+C = LK
+ST = CP
+L = Kandy
+CN = localhost
+[ v3_req ]
+basicContstraints = CA:FALSE
+keyUsage = nonRepudiation
+subjectAltName = @alt_names
+[ alt_names ]
+DNS.1 = localhost
+DNS.2 = *.cluster.local
+IP.1 = 127.0.0.1
