@@ -14,10 +14,6 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	WatcherRoutinesCount int
-)
-
 type PodExecutor struct {
 	k8sClientSet       *kubernetes.Clientset
 	namespace          string
@@ -25,6 +21,8 @@ type PodExecutor struct {
 	jobQueue           queue.JobQueue
 	watchQueue         queue.WatchQueue
 	concurrencyTimeout time.Duration
+	throttleTimeout    time.Duration
+	throttleThreshold  int
 }
 
 func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string, jobQueue queue.JobQueue) *PodExecutor {
