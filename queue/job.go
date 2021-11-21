@@ -4,9 +4,6 @@ import configcollector "github.com/luqmanMohammed/k8s-events-runner/runner-confi
 
 type Job struct {
 	configcollector.RunnerEventAssociation
-	RetryCount int
-	EventType  string
-	Resource   string
-	Status     string
-	PodName    string
+	EventType string
+	Resource  string
 }

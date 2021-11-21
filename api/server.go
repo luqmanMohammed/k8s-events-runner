@@ -120,7 +120,6 @@ func (ers *erServer) eventHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		job := queue.Job{
 			RunnerEventAssociation: rva,
-			RetryCount:             0,
 			EventType:              event.EventType,
 			Resource:               event.ResourseType,
 		}

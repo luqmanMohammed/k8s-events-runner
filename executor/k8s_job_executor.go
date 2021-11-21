@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	queue "github.com/luqmanMohammed/k8s-events-runner/queue"
@@ -11,7 +12,6 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
@@ -21,96 +21,64 @@ type K8sJobExecutor struct {
 	namespace          string
 	erPodIndentifier   string
 	jobQueue           queue.JobQueue
-	watchQueue         queue.WatchQueue
 	concurrencyTimeout time.Duration `default:"5m"`
 	cleanupTimeout     time.Duration `default:"1h"`
+	completions        int32         `default:"1"`
+	executorCount      int           `default:"5"`
 }
 
-func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string, concurrencyTimeout time.Duration, jobQueue queue.JobQueue) *K8sJobExecutor {
+func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string, concurrencyTimeout, cleanupTimeout time.Duration, jobQueue queue.JobQueue) *K8sJobExecutor {
 	return &K8sJobExecutor{
 		k8sClientSet:       k8sClientSet,
 		namespace:          namespace,
 		erPodIndentifier:   erPodIndentifier,
 		jobQueue:           jobQueue,
-		watchQueue:         queue.NewWatchQueue(50),
 		concurrencyTimeout: concurrencyTimeout,
+		cleanupTimeout:     cleanupTimeout,
+		completions:        1,
+		executorCount:      5,
 	}
 }
 
 func (pe K8sJobExecutor) StartExecutors(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			klog.Info("Pod executor is shutting down")
-			return
-		case jb := <-pe.jobQueue:
-			go pe.executeJob(ctx, jb)
-		}
-	}
-}
-
-func (pe K8sJobExecutor) StartWatcher(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			klog.Info("Pod executor watcher is shutting down")
-			return
-		case w := <-pe.watchQueue:
-			go pe.watchPod(ctx, w)
-		}
-	}
-}
-
-func (pe K8sJobExecutor) watchPod(ctx context.Context, jb *queue.Job) {
-	watchPodChan, err := pe.k8sClientSet.CoreV1().Pods(pe.namespace).Watch(ctx, metav1.ListOptions{
-		LabelSelector: "run=" + jb.PodName,
-		FieldSelector: "status.phase!=Running,status.phase!=Pending",
-	})
-	if err != nil {
-		klog.Errorf("failed to watch pod: %v", err)
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			klog.Info("Pod executor watcher is shutting down")
-			return
-		case evt, ok := <-watchPodChan.ResultChan():
-			if !ok {
-				klog.Info("Pod executor watcher is shutting down")
-				return
-			}
-			fmt.Println(evt.Object)
-			if evt.Type == watch.Added {
-				pod := evt.Object.(*v1.Pod)
-				if pod.Status.Phase == v1.PodFailed {
-					klog.Infof("Pod %s failed", jb.PodName)
-					jb.RetryCount++
-					if jb.RetryCount > jb.RetryLimit {
-						klog.Infof("Pod %s failed, retry limit reached, ignoring job ", jb.PodName)
-						return
-					}
-					pe.jobQueue <- jb
+	wg := sync.WaitGroup{}
+	wg.Add(pe.executorCount)
+	for i := 0; i < pe.executorCount; i++ {
+		go func(ctx context.Context) {
+			for {
+				select {
+				case <-ctx.Done():
+					klog.Info("Pod executor is shutting down")
+					wg.Done()
 					return
-				} else if pod.Status.Phase == v1.PodSucceeded {
-					klog.Infof("Pod %s succeeded", jb.PodName)
-					return
+				case jb := <-pe.jobQueue:
+					klog.Infof("executing job %s:%s", jb.Resource, jb.EventType)
+					pe.executeJob(ctx, jb)
 				}
-				return
 			}
-		}
+		}(ctx)
 	}
+	wg.Wait()
 }
 
 func (pe K8sJobExecutor) checkConcurrency(ctx context.Context, jb *queue.Job) (bool, error) {
+	if jb.ConcurrencyLimit == -1 {
+		return true, nil
+	}
 	jobList, err := pe.k8sClientSet.BatchV1().Jobs(pe.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("erID=%s,erEventType=%s,erResource=%s", pe.erPodIndentifier, jb.EventType, jb.Resource),
-		FieldSelector: "status.jobCondition!=Failed,status.jobCondition!=Complete",
+		FieldSelector: "status.successful!=1",
 	})
-	fmt.Println(len(jobList.Items))
 	if err != nil {
 		return false, err
 	}
-	if len(jobList.Items) > jb.ConcurrencyLimit {
+	concCount := 0
+	for _, job := range jobList.Items {
+		if len(job.Status.Conditions) == 0 {
+			concCount++
+		}
+	}
+	if concCount > jb.ConcurrencyLimit {
 		return false, nil
 	}
 	return true, nil
@@ -146,12 +114,13 @@ func (pe K8sJobExecutor) prepareJob(jb *queue.Job) batchv1.Job {
 			Template:                podTemplate,
 			BackoffLimit:            &retries,
 			TTLSecondsAfterFinished: &cleanupTimeout,
+			Completions:             &pe.completions,
 		},
 	}
 	return k8sJob
 }
 
-func (pe K8sJobExecutor) executeJob(ctx context.Context, jb *queue.Job) {
+func (pe *K8sJobExecutor) executeJob(ctx context.Context, jb *queue.Job) {
 	if ok, err := pe.checkConcurrency(ctx, jb); err != nil {
 		klog.Errorf("failed to check concurrency: %v", err)
 		return
@@ -169,11 +138,9 @@ func (pe K8sJobExecutor) executeJob(ctx context.Context, jb *queue.Job) {
 		}
 		return
 	}
-	pod := pe.prepareJob(jb)
-	createdPod, err := pe.k8sClientSet.CoreV1().Pods(pe.namespace).Create(ctx, &pod, metav1.CreateOptions{})
+	k8sJob := pe.prepareJob(jb)
+	_, err := pe.k8sClientSet.BatchV1().Jobs(pe.namespace).Create(ctx, &k8sJob, metav1.CreateOptions{})
 	if err != nil {
 		klog.Error(err)
 	}
-	jb.PodName = createdPod.Name
-	pe.watchQueue <- jb
 }

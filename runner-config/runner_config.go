@@ -9,8 +9,8 @@ type RunnerConfig v1.PodTemplateSpec
 //should be used on event with aditional info
 type EventMapRunnerAssociation struct {
 	Runner           string `yaml:"runner"`
-	ConcurrencyLimit int    `yaml:"concurrencyLimit" default:"1"`
-	RetryLimit       int    `yaml:"retries" default:"0"`
+	ConcurrencyLimit int    `yaml:"concurrencyLimit" default:"-1"`
+	RetryLimit       int    `yaml:"retryLimit" default:"0"`
 }
 
 //EventMapEventTypeAssociation associates Event type with specific runner association
