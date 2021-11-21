@@ -52,7 +52,10 @@ func (cmc *K8sConfigMapCollector) collectRunnerConfigs() error {
 				klog.V(1).ErrorS(err, "Failed to collect runner config from %s:%s. Continuing", cm.Name, key)
 				continue
 			}
-			tmpRunnerConfig := runnerconfig.RunnerConfig(podTemplate)
+			tmpRunnerConfig := runnerconfig.RunnerConfig(v1.PodTemplateSpec{
+				ObjectMeta: podTemplate.ObjectMeta,
+				Spec:       podTemplate.Spec,
+			})
 			cmc.runnerConfigs[cm.Name] = &tmpRunnerConfig
 		}
 		klog.V(2).Infof("Collected configs from ConfigMap: %s", cm.Name)

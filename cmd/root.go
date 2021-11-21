@@ -70,8 +70,8 @@ var (
 		"caCertPath":            "./test_pki/ca/ca.crt",
 		"serverCertPath":        "./test_pki/server/server.crt",
 		"serverKeyPath":         "./test_pki/server/server.key",
-		"ExecutorPodIdentifier": "er",
-		"ConcurrencyTimeout":    time.Minute * 5,
+		"executorPodIdentifier": "er",
+		"concurrencyTimeout":    time.Minute * 5,
 	}
 )
 
@@ -97,7 +97,11 @@ var rootCmd = &cobra.Command{
 		}
 		klog.V(1).Info("Starting Events Runner Server")
 		jq := queue.NewJobQueue(50)
-		exec := executor.New(kubeclientset, config.Namespace, config.ExecutorPodIdentifier, jq)
+		exec := executor.New(kubeclientset, config.Namespace, config.ExecutorPodIdentifier, config.ConcurrencyTimeout, jq)
+
+		// go func() {
+		// 	exec.StartWatcher(context.Background())
+		// }()
 
 		go func() {
 			exec.StartExecutors(context.Background())
