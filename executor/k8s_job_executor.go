@@ -13,7 +13,9 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 )
 
@@ -48,8 +50,29 @@ func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string,
 	}
 }
 
-func (pe K8sJobExecutor) runJobCleaner(ctx context.Context) {
-
+//RunJobCleaner Runs an informer which will clean up jobs that are completed or failed without any wait time
+//this function is to be used in older versions ( < 1.21 )of kubernetes to delete jobs that are completed or failed
+//TODO: Update to use a use RateLimiting queue to make sure all changes to the object are done before deleting
+//TODO: Add mechasim to have a grace period before deleting the job
+func (pe K8sJobExecutor) RunJobCleaner(ctx context.Context) {
+	inf := informers.NewSharedInformerFactoryWithOptions(pe.k8sClientSet, 0, informers.WithNamespace(pe.namespace), informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+		options.FieldSelector = "status.active!=1"
+		options.LabelSelector = fmt.Sprintf("erID=%s", pe.erPodIndentifier)
+	}))
+	delForground := metav1.DeletePropagationForeground
+	inf.Batch().V1().Jobs().Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		UpdateFunc: func(old, new interface{}) {
+			job := new.(*batchv1.Job)
+			if job.Status.Active == 0 && (job.Status.Succeeded == 1 || job.Status.Failed == 1) {
+				if err := pe.k8sClientSet.BatchV1().Jobs(pe.namespace).Delete(ctx, job.Name, metav1.DeleteOptions{
+					PropagationPolicy: &delForground,
+				}); err != nil {
+					klog.V(2).ErrorS(err, "Failed to cleanup Job "+job.Name)
+				}
+			}
+		},
+	})
+	inf.Start(ctx.Done())
 }
 
 func (pe K8sJobExecutor) StartExecutors(ctx context.Context) {
