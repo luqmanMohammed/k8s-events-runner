@@ -8,34 +8,38 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/luqmanMohammed/k8s-events-runner/config"
 	queue "github.com/luqmanMohammed/k8s-events-runner/queue"
-	configcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector"
 	"k8s.io/klog/v2"
 )
 
 var (
+	//static health response
 	healthResponse = baseResponse{
 		Message: "OK",
 	}
 )
 
+//baseResponse is a generic response struct with a message field
 type baseResponse struct {
 	Message string `json:"message"`
 }
 
+//event is used to parse the request body which ideally should be a json respresentation of a k8s event
 type event struct {
-	EventType    string `json:"type"`
-	ResourseType string `json:"resourseType"`
+	EventType    string                 `json:"type"`
+	ResourseType string                 `json:"resourseType"`
+	Object       map[string]interface{} `json:"object"`
 }
 
 type erServer struct {
 	addr            string `default:":8080"`
 	serveMux        *http.ServeMux
 	jobQueue        *queue.JobQueue
-	configCollector configcollector.ConfigCollector
+	configCollector config.ConfigCollector
 }
 
-func New(addr string, jq *queue.JobQueue, cc configcollector.ConfigCollector) *erServer {
+func New(addr string, jq *queue.JobQueue, cc config.ConfigCollector) *erServer {
 	erSer := &erServer{
 		addr:            addr,
 		jobQueue:        jq,
@@ -112,18 +116,18 @@ func (ers *erServer) eventHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		klog.V(1).Info("Received event", "event", event)
-		rva, err := ers.configCollector.GetRunnerEventAssocForResourceAndEvent(event.ResourseType, event.EventType)
+		rva, err := ers.configCollector.GetRunnerConfigForResourceAndEvent(event.ResourseType, event.EventType)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(baseResponse{Message: fmt.Sprintf("No Runner Config Found for %s:%s", event.ResourseType, event.EventType)})
 			return
 		}
 		job := queue.Job{
-			RunnerEventAssociation: rva,
-			EventType:              event.EventType,
-			Resource:               event.ResourseType,
+			RunnerConfig: rva,
+			EventType:    event.EventType,
+			Resource:     event.ResourseType,
 		}
-		ers.jobQueue.AddJob(job)
+		ers.jobQueue.AddJob(&job)
 		w.WriteHeader(http.StatusCreated)
 	}
 }

@@ -24,12 +24,13 @@ package cmd
 import (
 	"context"
 	"flag"
+	"fmt"
 	"time"
 
 	"github.com/luqmanMohammed/k8s-events-runner/api"
+	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/config/k8s-configmap-collector"
 	"github.com/luqmanMohammed/k8s-events-runner/executor"
 	"github.com/luqmanMohammed/k8s-events-runner/queue"
-	k8sconfigmapcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector/k8s-configmap-collector"
 	"github.com/luqmanMohammed/k8s-events-runner/utils"
 	"github.com/spf13/cobra"
 	"k8s.io/klog/v2"
@@ -90,6 +91,7 @@ var rootCmd = &cobra.Command{
 		klog.Info("Starting Events Runner")
 		klog.V(1).Info("Initializing Kube Connection")
 		kubeclientset, err := utils.GetKubeClientSet(config.IsLocal, config.KubeConfigPath)
+		fmt.Println(utils.GetKubeVersion(kubeclientset))
 		if err != nil {
 			klog.Fatalf("Error Initializing Kube Connection: %v", err)
 		}

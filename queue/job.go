@@ -1,9 +1,9 @@
 package queue
 
-import configcollector "github.com/luqmanMohammed/k8s-events-runner/runner-config/config-collector"
+import "github.com/luqmanMohammed/k8s-events-runner/config"
 
 type Job struct {
-	configcollector.RunnerEventAssociation
+	config.RunnerConfig
 	EventType string
 	Resource  string
 }

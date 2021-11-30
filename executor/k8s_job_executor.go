@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,12 +23,18 @@ type K8sJobExecutor struct {
 	erPodIndentifier   string
 	jobQueue           queue.JobQueue
 	concurrencyTimeout time.Duration `default:"5m"`
+	manageCleanup      bool          `default:"false"`
 	cleanupTimeout     time.Duration `default:"1h"`
 	completions        int32         `default:"1"`
 	executorCount      int           `default:"5"`
 }
 
 func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string, concurrencyTimeout, cleanupTimeout time.Duration, jobQueue queue.JobQueue) *K8sJobExecutor {
+	k8sMajorVersion, k8sMinorVersion, err := utils.GetKubeVersion(k8sClientSet)
+	if err != nil {
+		klog.Fatal(err)
+	}
+
 	return &K8sJobExecutor{
 		k8sClientSet:       k8sClientSet,
 		namespace:          namespace,
@@ -37,7 +44,12 @@ func New(k8sClientSet *kubernetes.Clientset, namespace, erPodIndentifier string,
 		cleanupTimeout:     cleanupTimeout,
 		completions:        1,
 		executorCount:      5,
+		manageCleanup:      k8sMajorVersion >= 1 && k8sMinorVersion >= 21,
 	}
+}
+
+func (pe K8sJobExecutor) runJobCleaner(ctx context.Context) {
+
 }
 
 func (pe K8sJobExecutor) StartExecutors(ctx context.Context) {
@@ -85,7 +97,7 @@ func (pe K8sJobExecutor) checkConcurrency(ctx context.Context, jb *queue.Job) (b
 }
 
 func (pe K8sJobExecutor) prepareJob(jb *queue.Job) batchv1.Job {
-	podTemplate := v1.PodTemplateSpec(*jb.RunnerConfig)
+	podTemplate := v1.PodTemplateSpec(*jb.RunnerTemplate)
 	if len(podTemplate.Labels) == 0 {
 		podTemplate.Labels = make(map[string]string)
 	}
@@ -98,6 +110,11 @@ func (pe K8sJobExecutor) prepareJob(jb *queue.Job) batchv1.Job {
 	}
 	retries := int32(jb.RetryLimit)
 	cleanupTimeout := int32(pe.cleanupTimeout.Seconds())
+
+	jobAnnotations := podTemplate.Annotations
+	if pe.manageCleanup {
+		jobAnnotations["erCleanTime"] = strconv.Itoa(int(time.Now().Add(pe.cleanupTimeout).Unix()))
+	}
 	jobLabels := utils.MergeStringStringMaps(podTemplate.Labels, map[string]string{
 		"erID":        pe.erPodIndentifier,
 		"erEventType": jb.EventType,
@@ -108,7 +125,7 @@ func (pe K8sJobExecutor) prepareJob(jb *queue.Job) batchv1.Job {
 			GenerateName: strings.ToLower(fmt.Sprintf("%s-%s-%s-", jb.Resource, jb.EventType, jb.Runner)),
 			Namespace:    pe.namespace,
 			Labels:       jobLabels,
-			Annotations:  podTemplate.Annotations,
+			Annotations:  jobAnnotations,
 		},
 		Spec: batchv1.JobSpec{
 			Template:                podTemplate,
